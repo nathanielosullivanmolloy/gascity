@@ -1544,7 +1544,7 @@ type OptionChoiceDTO struct {
 
 // OrderCheckListBody defines model for OrderCheckListBody.
 type OrderCheckListBody struct {
-	// Checks Order gate evaluations.
+	// Checks Order trigger evaluations.
 	Checks *[]OrderCheckResponse `json:"checks"`
 }
 
@@ -1604,7 +1604,6 @@ type OrderResponse struct {
 	Enabled       bool    `json:"enabled"`
 	Exec          *string `json:"exec,omitempty"`
 	Formula       *string `json:"formula,omitempty"`
-	Gate          string  `json:"gate"`
 	Interval      *string `json:"interval,omitempty"`
 	Name          string  `json:"name"`
 	On            *string `json:"on,omitempty"`
@@ -1614,6 +1613,7 @@ type OrderResponse struct {
 	ScopedName    string  `json:"scoped_name"`
 	Timeout       *string `json:"timeout,omitempty"`
 	TimeoutMs     int64   `json:"timeout_ms"`
+	Trigger       string  `json:"trigger"`
 	Type          string  `json:"type"`
 }
 

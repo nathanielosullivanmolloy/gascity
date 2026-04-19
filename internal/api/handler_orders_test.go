@@ -149,11 +149,11 @@ func TestHandleOrderGet_UsesTriggerFieldOnly(t *testing.T) {
 			Interval: "5m",
 		},
 	}
-	srv := New(fs)
+	h := newTestCityHandler(t, fs)
 
-	req := httptest.NewRequest("GET", "/v0/order/dolt-health", nil)
+	req := httptest.NewRequest("GET", cityURL(fs, "/order/dolt-health"), nil)
 	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
+	h.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body = %s", w.Code, http.StatusOK, w.Body.String())
