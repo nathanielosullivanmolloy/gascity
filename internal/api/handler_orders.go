@@ -24,6 +24,7 @@ type orderResponse struct {
 	Description   string `json:"description,omitempty"`
 	Type          string `json:"type"`
 	Trigger       string `json:"trigger"`
+	Gate          string `json:"gate,omitempty" deprecated:"true"`
 	Interval      string `json:"interval,omitempty"`
 	Schedule      string `json:"schedule,omitempty"`
 	Check         string `json:"check,omitempty"`
@@ -77,6 +78,7 @@ func toOrderResponse(a orders.Order) orderResponse {
 		Description:   a.Description,
 		Type:          typ,
 		Trigger:       a.Trigger,
+		Gate:          a.Trigger,
 		Interval:      a.Interval,
 		Schedule:      a.Schedule,
 		Check:         a.Check,

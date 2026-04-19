@@ -4002,6 +4002,10 @@
           "formula": {
             "type": "string"
           },
+          "gate": {
+            "deprecated": true,
+            "type": "string"
+          },
           "interval": {
             "type": "string"
           },

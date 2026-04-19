@@ -209,3 +209,29 @@ gate = "cooldown"
 		t.Fatalf("warnings = %v, want none", warnings)
 	}
 }
+
+func TestParseWithMetaWarnsForUnknownOrderOverrideKey(t *testing.T) {
+	input := `
+[workspace]
+name = "test"
+
+[orders]
+
+[[orders.overrides]]
+name = "digest"
+triger = "cooldown"
+`
+	cfg, _, warnings, err := parseWithMeta([]byte(input), "test.toml")
+	if err != nil {
+		t.Fatalf("parseWithMeta: %v", err)
+	}
+	if len(cfg.Orders.Overrides) != 1 {
+		t.Fatalf("len(overrides) = %d, want 1", len(cfg.Orders.Overrides))
+	}
+	if len(warnings) == 0 {
+		t.Fatal("warnings = nil, want unknown-key warning")
+	}
+	if !strings.Contains(warnings[0], "triger") {
+		t.Fatalf("warning = %q, want triger key", warnings[0])
+	}
+}

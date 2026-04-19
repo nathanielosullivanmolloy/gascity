@@ -1371,6 +1371,41 @@ func TestSetOrderOverride_UpdateExisting(t *testing.T) {
 	}
 }
 
+func TestSetOrderOverridePreservesExistingTriggerOnPartialUpdate(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTOML(t, dir, minimalCity())
+	ed := configedit.NewEditor(fsys.OSFS{}, path)
+
+	disabled := false
+	trigger := "cooldown"
+	_ = ed.SetOrderOverride(config.OrderOverride{
+		Name:    "health-check",
+		Enabled: &disabled,
+		Trigger: &trigger,
+	})
+
+	enabled := true
+	err := ed.SetOrderOverride(config.OrderOverride{
+		Name:    "health-check",
+		Enabled: &enabled,
+	})
+	if err != nil {
+		t.Fatalf("SetOrderOverride (partial update): %v", err)
+	}
+
+	cfg := readTOML(t, path)
+	if len(cfg.Orders.Overrides) != 1 {
+		t.Fatalf("expected 1 override, got %d", len(cfg.Orders.Overrides))
+	}
+	ov := cfg.Orders.Overrides[0]
+	if ov.Enabled == nil || !*ov.Enabled {
+		t.Fatal("expected enabled=true after partial update")
+	}
+	if ov.Trigger == nil || *ov.Trigger != "cooldown" {
+		t.Fatalf("trigger = %#v, want cooldown", ov.Trigger)
+	}
+}
+
 func TestDeleteOrderOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTOML(t, dir, minimalCity())
@@ -1431,7 +1466,7 @@ gate = "cooldown"
 	if strings.Contains(got, "gate =") {
 		t.Fatalf("city.toml still contains legacy gate key:\n%s", got)
 	}
-	if strings.Contains(got, `trigger =`) {
-		t.Fatalf("city.toml unexpectedly wrote trigger for enabled-only override:\n%s", got)
+	if !strings.Contains(got, `trigger = "cooldown"`) {
+		t.Fatalf("city.toml missing canonical trigger after enabled-only update:\n%s", got)
 	}
 }

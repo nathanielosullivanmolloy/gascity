@@ -4,7 +4,6 @@
 package orders
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
@@ -23,7 +22,9 @@ type Order struct {
 	// Exec is a shell command run directly by the controller, bypassing
 	// the agent pipeline. Mutually exclusive with Formula.
 	Exec string `toml:"exec,omitempty"`
-	// Trigger is the trigger type: "cooldown", "cron", "condition", "event", or "manual".
+	// Trigger is the order scheduler selector: "cooldown", "cron",
+	// "condition", "event", or "manual". This is distinct from the
+	// separate "gate" concepts used elsewhere in the system.
 	Trigger string `toml:"trigger"`
 	// Interval is the minimum time between runs (for cooldown triggers). Go duration string.
 	Interval string `toml:"interval,omitempty"`
@@ -134,24 +135,6 @@ func Parse(data []byte) (Order, error) {
 		return Order{}, fmt.Errorf("parsing order: %w", err)
 	}
 	return af.Order.normalized(), nil
-}
-
-// UnmarshalTOML accepts both trigger and legacy gate keys, with trigger taking precedence.
-func (a *Order) UnmarshalTOML(data interface{}) error {
-	var buf bytes.Buffer
-	enc := toml.NewEncoder(&buf)
-	enc.Indent = ""
-	if err := enc.Encode(data); err != nil {
-		return fmt.Errorf("encoding order: %w", err)
-	}
-
-	var raw orderDecode
-	if _, err := toml.Decode(buf.String(), &raw); err != nil {
-		return fmt.Errorf("decoding order: %w", err)
-	}
-
-	*a = raw.normalized()
-	return nil
 }
 
 // Validate checks an Order for structural correctness based on its trigger type.

@@ -358,6 +358,7 @@ OrderOverride modifies a scanned order's scheduling fields.
 | `rig` | string |  |  | Rig scopes the override to a specific rig's order. Empty matches city-level orders. |
 | `enabled` | boolean |  |  | Enabled overrides whether the order is active. |
 | `trigger` | string |  |  | Trigger overrides the trigger type. |
+| `gate` | string |  |  | Gate is a deprecated alias for Trigger accepted during the gate-&gt;trigger migration. Parsed inputs are normalized to Trigger. |
 | `interval` | string |  |  | Interval overrides the cooldown interval. Go duration string. |
 | `schedule` | string |  |  | Schedule overrides the cron expression. |
 | `check` | string |  |  | Check overrides the condition trigger check command. |

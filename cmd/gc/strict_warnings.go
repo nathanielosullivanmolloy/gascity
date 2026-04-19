@@ -16,8 +16,8 @@ func splitStrictConfigWarnings(warnings []string) (fatal []string, nonFatal []st
 }
 
 func strictWarningIsNonFatal(warning string) bool {
-	// Site-binding warnings are compatibility guidance: the loader still
-	// returns a usable config by falling back to city.toml paths or leaving
-	// rigs unbound. They should be visible, but they must not block startup.
-	return strings.Contains(warning, ".gc/site.toml")
+	// Only migration guidance that preserves a usable config stays non-fatal
+	// in strict mode. Missing rig bindings still remain fatal.
+	return strings.Contains(warning, "still declares path in city.toml; move it to .gc/site.toml") ||
+		strings.HasPrefix(warning, ".gc/site.toml declares a binding for unknown rig ")
 }

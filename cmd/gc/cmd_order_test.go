@@ -535,7 +535,7 @@ func TestOrderCheckWithStoresResolverUsesRigStore(t *testing.T) {
 	aa := []orders.Order{{
 		Name:     "digest",
 		Rig:      "frontend",
-		Gate:     "cooldown",
+		Trigger:  "cooldown",
 		Interval: "24h",
 		Formula:  "mol-digest",
 	}}
@@ -569,7 +569,7 @@ func TestOrderCheckWithStoresResolverUsesLegacyCityStore(t *testing.T) {
 	aa := []orders.Order{{
 		Name:     "digest",
 		Rig:      "frontend",
-		Gate:     "cooldown",
+		Trigger:  "cooldown",
 		Interval: "24h",
 		Formula:  "mol-digest",
 	}}
@@ -602,7 +602,7 @@ func TestOrderCheckWithStoresResolverFailsWhenLegacyEventCursorReadFails(t *test
 	aa := []orders.Order{{
 		Name:    "watch",
 		Rig:     "frontend",
-		Gate:    "event",
+		Trigger: "event",
 		On:      events.BeadClosed,
 		Formula: "mol-watch",
 	}}
@@ -633,7 +633,7 @@ func TestOrderCheckWithStoresResolverFailsWhenLegacyLastRunReadFails(t *testing.
 	aa := []orders.Order{{
 		Name:     "digest",
 		Rig:      "frontend",
-		Gate:     "cooldown",
+		Trigger:  "cooldown",
 		Interval: "24h",
 		Formula:  "mol-digest",
 	}}
@@ -1240,7 +1240,7 @@ func TestOrderCheckWithRig(t *testing.T) {
 		t.Fatalf("doOrderCheck = %d, want 0", code)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "RIG") {
+	if !strings.Contains(out, " RIG") {
 		t.Errorf("stdout missing 'RIG' column:\n%s", out)
 	}
 	if !strings.Contains(out, "demo-repo") {

@@ -132,8 +132,7 @@ func TestDoEventsFallsBackToLocalCityEventsWhenCityStopped(t *testing.T) {
 
 	server := newEventsTestServer(t, testEventRoutes{
 		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-			writeJSONResponse(t, w, map[string]any{
+			writeProblemResponse(t, w, http.StatusNotFound, map[string]any{
 				"status": http.StatusNotFound,
 				"title":  "Not Found",
 				"detail": "not_found: city not found or not running: mc-city",
@@ -161,6 +160,123 @@ func TestDoEventsFallsBackToLocalCityEventsWhenCityStopped(t *testing.T) {
 	}
 }
 
+func TestDoEventsFallsBackToLocalCityEventsOnTypedStoppedCityNotFound(t *testing.T) {
+	cityDir := t.TempDir()
+	rec := newTestProvider(t, filepath.Join(cityDir, ".gc"))
+	rec.Record(events.Event{
+		Type:    events.SessionStopped,
+		Actor:   "gc",
+		Subject: "worker",
+		Message: "stopped",
+	})
+
+	server := newEventsTestServer(t, testEventRoutes{
+		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
+			writeProblemResponse(t, w, http.StatusNotFound, genclient.ErrorModel{
+				Status: int64Ptr(http.StatusNotFound),
+				Title:  stringPtr("Not Found"),
+				Detail: stringPtr("not_found: city not found or not running: mc-city"),
+			})
+		},
+	})
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := doEvents(eventsAPIScope{
+		apiURL:   server.URL,
+		cityName: "mc-city",
+		cityPath: cityDir,
+	}, events.SessionStopped, "", nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doEvents = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	var got genclient.WireEvent
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &got); err != nil {
+		t.Fatalf("unmarshal stdout: %v; output=%s", err, stdout.String())
+	}
+	if got.Type != events.SessionStopped || got.Seq != 1 {
+		t.Fatalf("fallback event = %+v, want session.stopped seq=1", got)
+	}
+}
+
+func TestDoEventsDoesNotFallbackToLocalCityEventsForGeneric404(t *testing.T) {
+	cityDir := t.TempDir()
+	rec := newTestProvider(t, filepath.Join(cityDir, ".gc"))
+	rec.Record(events.Event{
+		Type:    events.SessionStopped,
+		Actor:   "gc",
+		Subject: "worker",
+		Message: "stopped",
+	})
+
+	server := newEventsTestServer(t, testEventRoutes{
+		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
+			writeProblemResponse(t, w, http.StatusNotFound, genclient.ErrorModel{
+				Status: int64Ptr(http.StatusNotFound),
+				Title:  stringPtr("Not Found"),
+				Detail: stringPtr("city is unavailable"),
+			})
+		},
+	})
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := doEvents(eventsAPIScope{
+		apiURL:   server.URL,
+		cityName: "mc-city",
+		cityPath: cityDir,
+	}, events.SessionStopped, "", nil, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("doEvents = %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty when fallback is disabled", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "city is unavailable") {
+		t.Fatalf("stderr = %q, want original API error", stderr.String())
+	}
+}
+
+func TestDoEventsDoesNotFallbackToLocalCityEventsForExplicitAPI(t *testing.T) {
+	cityDir := t.TempDir()
+	rec := newTestProvider(t, filepath.Join(cityDir, ".gc"))
+	rec.Record(events.Event{
+		Type:    events.SessionStopped,
+		Actor:   "gc",
+		Subject: "worker",
+		Message: "stopped",
+	})
+
+	server := newEventsTestServer(t, testEventRoutes{
+		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
+			writeProblemResponse(t, w, http.StatusNotFound, genclient.ErrorModel{
+				Status: int64Ptr(http.StatusNotFound),
+				Title:  stringPtr("Not Found"),
+				Detail: stringPtr("not_found: city not found or not running: mc-city"),
+			})
+		},
+	})
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := doEvents(eventsAPIScope{
+		apiURL:      server.URL,
+		cityName:    "mc-city",
+		cityPath:    cityDir,
+		explicitAPI: true,
+	}, events.SessionStopped, "", nil, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("doEvents = %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty when explicit API disables fallback", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "not_found: city not found or not running: mc-city") {
+		t.Fatalf("stderr = %q, want original API error", stderr.String())
+	}
+}
+
 func TestDoEventsSeqFallsBackToLocalCityEventHeadWhenCityStopped(t *testing.T) {
 	cityDir := t.TempDir()
 	rec := newTestProvider(t, filepath.Join(cityDir, ".gc"))
@@ -169,8 +285,7 @@ func TestDoEventsSeqFallsBackToLocalCityEventHeadWhenCityStopped(t *testing.T) {
 
 	server := newEventsTestServer(t, testEventRoutes{
 		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-			writeJSONResponse(t, w, map[string]any{
+			writeProblemResponse(t, w, http.StatusNotFound, map[string]any{
 				"status": http.StatusNotFound,
 				"title":  "Not Found",
 				"detail": "not_found: city not found or not running: mc-city",
@@ -399,7 +514,21 @@ func writeJSONResponse(t *testing.T, w http.ResponseWriter, body any) {
 	}
 }
 
+func writeProblemResponse(t *testing.T, w http.ResponseWriter, status int, body any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		t.Fatalf("encode problem response: %v", err)
+	}
+}
+
 var _ = context.Background
+
+func int64Ptr(v int) *int64 {
+	x := int64(v)
+	return &x
+}
 
 func newTestProvider(t *testing.T, dir string) *events.FileRecorder {
 	t.Helper()

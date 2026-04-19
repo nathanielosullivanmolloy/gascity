@@ -1414,7 +1414,7 @@ func TestBuildOrderDispatcherRigOrderUsesRigFileStore(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(orderDir, "order.toml"), `[order]
 formula = "test-formula"
-gate = "cooldown"
+trigger = "cooldown"
 interval = "1m"
 pool = "worker"
 `)
@@ -1491,7 +1491,7 @@ func TestBuildOrderDispatcherRigOrderHonorsLegacyCityRunHistory(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(orderDir, "order.toml"), `[order]
 formula = "test-formula"
-gate = "cooldown"
+trigger = "cooldown"
 interval = "24h"
 pool = "worker"
 `)
@@ -1562,7 +1562,7 @@ func TestOrderDispatchSkipsRigOrderWhenLegacyCityFallbackUnavailable(t *testing.
 		aa: []orders.Order{{
 			Name:         "rig-digest",
 			Rig:          "frontend",
-			Gate:         "cooldown",
+			Trigger:      "cooldown",
 			Interval:     "1m",
 			Formula:      "test-formula",
 			Pool:         "worker",
@@ -1612,7 +1612,7 @@ func TestOrderDispatchSkipsRigEventWhenLegacyCursorReadFails(t *testing.T) {
 		aa: []orders.Order{{
 			Name:    "release-watch",
 			Rig:     "frontend",
-			Gate:    "event",
+			Trigger: "event",
 			On:      events.BeadClosed,
 			Exec:    "true",
 			Pool:    "worker",
@@ -1660,7 +1660,7 @@ func TestOrderDispatchSkipsRigConditionWhenLegacyOpenWorkReadFails(t *testing.T)
 		aa: []orders.Order{{
 			Name:    "rig-digest",
 			Rig:     "frontend",
-			Gate:    "condition",
+			Trigger: "condition",
 			Check:   "true",
 			Exec:    "true",
 			Pool:    "worker",
@@ -1707,7 +1707,7 @@ func TestOrderDispatchSkipsRigCooldownWhenLegacyLastRunReadFails(t *testing.T) {
 		aa: []orders.Order{{
 			Name:         "rig-digest",
 			Rig:          "frontend",
-			Gate:         "cooldown",
+			Trigger:      "cooldown",
 			Interval:     "1m",
 			Formula:      "test-formula",
 			Pool:         "worker",

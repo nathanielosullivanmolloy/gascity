@@ -1274,6 +1274,11 @@
           "type": "string",
           "description": "Trigger overrides the trigger type."
         },
+        "gate": {
+          "type": "string",
+          "description": "Gate is a deprecated alias for Trigger accepted during the\ngate-\u003etrigger migration. Parsed inputs are normalized to Trigger.",
+          "deprecated": true
+        },
         "interval": {
           "type": "string",
           "description": "Interval overrides the cooldown interval. Go duration string."

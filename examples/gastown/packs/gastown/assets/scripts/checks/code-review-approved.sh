@@ -22,14 +22,25 @@ json_payload() {
 bd_json() {
     local attempt=0
     local output=""
+    local stderr_file=""
+    local last_stderr=""
     while [ "$attempt" -lt 10 ]; do
-        if output=$(bd "$@" 2>/dev/null | json_payload) && [ -n "$output" ]; then
+        stderr_file=$(mktemp)
+        if output=$(bd "$@" 2>"$stderr_file" | json_payload) && [ -n "$output" ]; then
+            rm -f "$stderr_file"
             printf '%s\n' "$output"
             return 0
         fi
+        if [ -s "$stderr_file" ]; then
+            last_stderr=$(cat "$stderr_file")
+        fi
+        rm -f "$stderr_file"
         attempt=$((attempt + 1))
         sleep 0.2
     done
+    if [ -n "$last_stderr" ]; then
+        printf '%s\n' "$last_stderr" >&2
+    fi
     return 1
 }
 

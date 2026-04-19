@@ -475,7 +475,8 @@ case "$cmd" in
     count=$((count + 1))
     printf '%%s' "$count" >"$state_file"
     if [ "$count" -eq 1 ]; then
-      exit 1
+      printf '%%s\n' '{"metadata":{"gc.attempt":"1"}}'
+      exit 0
     fi
     printf '%%s\n' '{"metadata":{"gc.attempt":"1","gc.root_bead_id":"root-1"}}'
     ;;
