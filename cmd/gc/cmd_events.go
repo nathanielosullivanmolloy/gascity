@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 type eventsAPIScope struct {
 	apiURL   string
 	cityName string
+	cityPath string
 }
 
 func (s eventsAPIScope) isSupervisor() bool { return s.cityName == "" }
@@ -193,6 +195,7 @@ func resolveEventsScope(apiURLOverride string) (eventsAPIScope, error) {
 		return eventsAPIScope{
 			apiURL:   strings.TrimRight(override, "/"),
 			cityName: cityName,
+			cityPath: cityPath,
 		}, nil
 	}
 
@@ -204,6 +207,7 @@ func resolveEventsScope(apiURLOverride string) (eventsAPIScope, error) {
 		return eventsAPIScope{
 			apiURL:   strings.TrimRight(baseURL, "/"),
 			cityName: cityName,
+			cityPath: cityPath,
 		}, nil
 	}
 
@@ -221,6 +225,7 @@ func resolveEventsScope(apiURLOverride string) (eventsAPIScope, error) {
 		return eventsAPIScope{
 			apiURL:   strings.TrimRight(standaloneAPIBaseURL(cfg), "/"),
 			cityName: cityName,
+			cityPath: cityPath,
 		}, nil
 	}
 	return eventsAPIScope{}, fmt.Errorf(
@@ -282,6 +287,14 @@ func doEvents(scope eventsAPIScope, typeFilter, sinceFlag string, payloadMatch m
 
 	items, err := fetchCityEvents(ctx, client, scope.cityName, typeFilter, sinceFlag)
 	if err != nil {
+		if fallback, fallbackErr, ok := readLocalCityEvents(scope, err, typeFilter, sinceFlag); ok {
+			if fallbackErr != nil {
+				fmt.Fprintf(stderr, "gc events: %v\n", fallbackErr) //nolint:errcheck
+				return 1
+			}
+			fallback = filterCityEvents(fallback, 0, typeFilter, payloadMatch)
+			return printJSONLines(fallback, stdout, stderr)
+		}
 		fmt.Fprintf(stderr, "gc events: %v\n", err) //nolint:errcheck
 		return 1
 	}
@@ -314,11 +327,91 @@ func doEventsSeq(scope eventsAPIScope, stdout, stderr io.Writer) int {
 
 	index, err := fetchCityHeadIndex(ctx, client, scope.cityName)
 	if err != nil {
+		if fallback, fallbackErr, ok := readLocalCityHeadIndex(scope, err); ok {
+			if fallbackErr != nil {
+				fmt.Fprintf(stderr, "gc events: %v\n", fallbackErr) //nolint:errcheck
+				return 1
+			}
+			fmt.Fprintln(stdout, fallback) //nolint:errcheck
+			return 0
+		}
 		fmt.Fprintf(stderr, "gc events: %v\n", err) //nolint:errcheck
 		return 1
 	}
 	fmt.Fprintln(stdout, index) //nolint:errcheck
 	return 0
+}
+
+func readLocalCityEvents(scope eventsAPIScope, apiErr error, typeFilter, sinceFlag string) ([]genclient.WireEvent, error, bool) {
+	if !shouldUseLocalCityEventsFallback(scope, apiErr) {
+		return nil, nil, false
+	}
+	filter := events.Filter{Type: strings.TrimSpace(typeFilter)}
+	if cutoff, err := eventsSinceCutoff(sinceFlag); err != nil {
+		return nil, err, true
+	} else if !cutoff.IsZero() {
+		filter.Since = cutoff
+	}
+	all, err := events.ReadFiltered(filepath.Join(scope.cityPath, ".gc", "events.jsonl"), filter)
+	if err != nil {
+		return nil, fmt.Errorf("reading local city events: %w", err), true
+	}
+	items := make([]genclient.WireEvent, 0, len(all))
+	for _, item := range all {
+		items = append(items, localWireEvent(item))
+	}
+	return items, nil, true
+}
+
+func readLocalCityHeadIndex(scope eventsAPIScope, apiErr error) (string, error, bool) {
+	if !shouldUseLocalCityEventsFallback(scope, apiErr) {
+		return "", nil, false
+	}
+	seq, err := events.ReadLatestSeq(filepath.Join(scope.cityPath, ".gc", "events.jsonl"))
+	if err != nil {
+		return "", fmt.Errorf("reading local city event head: %w", err), true
+	}
+	return strconv.FormatUint(seq, 10), nil, true
+}
+
+func shouldUseLocalCityEventsFallback(scope eventsAPIScope, apiErr error) bool {
+	return strings.TrimSpace(scope.cityPath) != "" &&
+		apiErr != nil &&
+		strings.Contains(apiErr.Error(), "city not found or not running")
+}
+
+func eventsSinceCutoff(sinceFlag string) (time.Time, error) {
+	sinceFlag = strings.TrimSpace(sinceFlag)
+	if sinceFlag == "" {
+		return time.Time{}, nil
+	}
+	d, err := time.ParseDuration(sinceFlag)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid --since %q: %v", sinceFlag, err)
+	}
+	return time.Now().Add(-d), nil
+}
+
+func localWireEvent(e events.Event) genclient.WireEvent {
+	item := genclient.WireEvent{
+		Actor: e.Actor,
+		Seq:   int64(e.Seq),
+		Ts:    e.Ts,
+		Type:  e.Type,
+	}
+	if e.Subject != "" {
+		item.Subject = &e.Subject
+	}
+	if e.Message != "" {
+		item.Message = &e.Message
+	}
+	if len(e.Payload) > 0 && string(e.Payload) != "null" {
+		var payload genclient.EventPayload
+		if err := payload.UnmarshalJSON(e.Payload); err == nil {
+			item.Payload = &payload
+		}
+	}
+	return item
 }
 
 func doEventsFollow(scope eventsAPIScope, typeFilter string, payloadMatch map[string][]string, afterSeq uint64, afterCursor string, stdout, stderr io.Writer) int {
@@ -436,7 +529,7 @@ func fetchCityEvents(ctx context.Context, client *genclient.ClientWithResponses,
 		if err != nil {
 			return nil, fmt.Errorf("request failed: %w", err)
 		}
-		if err := eventsListError(resp.StatusCode(), resp.ApplicationproblemJSONDefault); err != nil {
+		if err := eventsListError(resp.StatusCode(), resp.Body, resp.ApplicationproblemJSONDefault); err != nil {
 			return nil, err
 		}
 		if resp.JSON200 == nil || resp.JSON200.Items == nil {
@@ -458,7 +551,7 @@ func fetchCityHeadIndex(ctx context.Context, client *genclient.ClientWithRespons
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
-	if err := eventsListError(resp.StatusCode(), resp.ApplicationproblemJSONDefault); err != nil {
+	if err := eventsListError(resp.StatusCode(), resp.Body, resp.ApplicationproblemJSONDefault); err != nil {
 		return "", err
 	}
 	if resp.HTTPResponse == nil {
@@ -495,7 +588,7 @@ func fetchSupervisorEventsWithLimit(ctx context.Context, client *genclient.Clien
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	if err := eventsListError(resp.StatusCode(), resp.ApplicationproblemJSONDefault); err != nil {
+	if err := eventsListError(resp.StatusCode(), resp.Body, resp.ApplicationproblemJSONDefault); err != nil {
 		return nil, err
 	}
 	if resp.JSON200 == nil || resp.JSON200.Items == nil {
@@ -528,15 +621,40 @@ func fetchSupervisorHeadCursor(ctx context.Context, client *genclient.ClientWith
 	return supervisorCursorFor(items), nil
 }
 
-func eventsListError(statusCode int, problem *genclient.ErrorModel) error {
+func eventsListError(statusCode int, body []byte, problem *genclient.ErrorModel) error {
 	if statusCode >= 200 && statusCode < 300 {
 		return nil
 	}
-	if problem != nil && problem.Detail != nil && strings.TrimSpace(*problem.Detail) != "" {
-		return errors.New(strings.TrimSpace(*problem.Detail))
+
+	var detail string
+	var title string
+	if problem != nil {
+		if problem.Detail != nil {
+			detail = strings.TrimSpace(*problem.Detail)
+		}
+		if problem.Title != nil {
+			title = strings.TrimSpace(*problem.Title)
+		}
 	}
-	if problem != nil && problem.Title != nil && strings.TrimSpace(*problem.Title) != "" {
-		return errors.New(strings.TrimSpace(*problem.Title))
+	if detail == "" || title == "" {
+		var parsed struct {
+			Detail string `json:"detail"`
+			Title  string `json:"title"`
+		}
+		if err := json.Unmarshal(body, &parsed); err == nil {
+			if detail == "" {
+				detail = strings.TrimSpace(parsed.Detail)
+			}
+			if title == "" {
+				title = strings.TrimSpace(parsed.Title)
+			}
+		}
+	}
+	if detail != "" {
+		return errors.New(detail)
+	}
+	if title != "" {
+		return errors.New(title)
 	}
 	if statusCode == 0 {
 		return fmt.Errorf("request failed")

@@ -120,6 +120,79 @@ func TestDoEventsSeqSupervisorPrintsCompositeCursor(t *testing.T) {
 	}
 }
 
+func TestDoEventsFallsBackToLocalCityEventsWhenCityStopped(t *testing.T) {
+	cityDir := t.TempDir()
+	rec := newTestProvider(t, filepath.Join(cityDir, ".gc"))
+	rec.Record(events.Event{
+		Type:    events.SessionStopped,
+		Actor:   "gc",
+		Subject: "worker",
+		Message: "stopped",
+	})
+
+	server := newEventsTestServer(t, testEventRoutes{
+		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			writeJSONResponse(t, w, map[string]any{
+				"status": http.StatusNotFound,
+				"title":  "Not Found",
+				"detail": "not_found: city not found or not running: mc-city",
+			})
+		},
+	})
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := doEvents(eventsAPIScope{
+		apiURL:   server.URL,
+		cityName: "mc-city",
+		cityPath: cityDir,
+	}, events.SessionStopped, "", nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doEvents = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	var got genclient.WireEvent
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &got); err != nil {
+		t.Fatalf("unmarshal stdout: %v; output=%s", err, stdout.String())
+	}
+	if got.Type != events.SessionStopped || got.Seq != 1 {
+		t.Fatalf("fallback event = %+v, want session.stopped seq=1", got)
+	}
+}
+
+func TestDoEventsSeqFallsBackToLocalCityEventHeadWhenCityStopped(t *testing.T) {
+	cityDir := t.TempDir()
+	rec := newTestProvider(t, filepath.Join(cityDir, ".gc"))
+	rec.Record(events.Event{Type: events.SessionWoke, Actor: "gc"})
+	rec.Record(events.Event{Type: events.SessionStopped, Actor: "gc"})
+
+	server := newEventsTestServer(t, testEventRoutes{
+		cityEvents: func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			writeJSONResponse(t, w, map[string]any{
+				"status": http.StatusNotFound,
+				"title":  "Not Found",
+				"detail": "not_found: city not found or not running: mc-city",
+			})
+		},
+	})
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := doEventsSeq(eventsAPIScope{
+		apiURL:   server.URL,
+		cityName: "mc-city",
+		cityPath: cityDir,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doEventsSeq = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "2" {
+		t.Fatalf("seq = %q, want 2", got)
+	}
+}
+
 func TestDoEventsWatchCityBufferedReplayUsesEnvelopeSchema(t *testing.T) {
 	items := []genclient.WireEvent{
 		{Actor: "human", Seq: 1, Subject: stringPtr("gc-1"), Ts: time.Unix(1700000000, 0).UTC(), Type: "bead.created"},
