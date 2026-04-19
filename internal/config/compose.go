@@ -437,7 +437,9 @@ func LoadWithIncludes(fs fsys.FS, path string, extraIncludes ...string) (*City, 
 	// still populates the v0.15.0 attachment-list tombstone fields. The
 	// fields still parse (TOML won't error) but are ignored by the new
 	// materializer.
-	WarnDeprecatedAttachmentFields(root)
+	if warning := WarnDeprecatedAttachmentFields(root); warning != "" {
+		prov.Warnings = append(prov.Warnings, warning)
+	}
 
 	siteBindingWarnings, err := ApplySiteBindings(fs, cityRoot, root)
 	if err != nil {
